@@ -97,6 +97,8 @@ static NSString * resueId = @"cell";
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    self.navigationController.navigationBarHidden = NO;
+    self.tabBarController.tabBar.hidden = NO;
     NSLog(@"hello gitKong");
 }
 

@@ -159,10 +159,19 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
     
     else{
         NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:image]];
+        __weak typeof(self) weakSelf = self;
+        
         if (data) {// 网络url
-            self.imageView.image = [self getImageWithData:data];
-            // 缓存在沙盒中
-            [data writeToFile:path atomically:YES];
+            dispatch_async(dispatch_get_global_queue(0, 0), ^{
+                UIImage *networkImg = [self getImageWithData:data];
+                // 缓存在沙盒中
+                [data writeToFile:path atomically:YES];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    weakSelf.imageView.image = networkImg;
+                });
+            });
+            
         }
         else{// 项目中文件
             if ([image rangeOfString:@".gif"].location != NSNotFound) {
