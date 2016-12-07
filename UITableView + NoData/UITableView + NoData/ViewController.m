@@ -8,7 +8,7 @@
 
 #import "ViewController.h"
 #import "UITableView+fl_category.h"
-
+#import "UIImageView+WebCache.h"
 @interface ViewController ()<UITableViewDelegate,UITableViewDataSource>
 @property (nonatomic,strong)NSMutableArray *modelArrM;
 @property (nonatomic,weak)UITableView *tableView;
@@ -42,7 +42,7 @@
     // tableView.fl_noData_image = @"2.gif";
     
     // 没网络显示
-    tableView.fl_noNetwork_image = @"1.jpg";
+    tableView.fl_noNetwork_image = @"2.gif";
     
     // 点击操作
     __weak typeof(self) weakSelf = self;
@@ -57,7 +57,18 @@
     [self.view addSubview:tableView];
     self.tableView = tableView;
     
+    
+    /**
+     *  @author gitKong
+     *
+     *  测试发现SDWebImage 加载gif 也是会出现内存飙升
+     */
+//    UIImageView *imageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+//    [imageView sd_setImageWithURL:[NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"test.gif" ofType:nil]] placeholderImage:nil];
+//    [self.view addSubview:imageView];
+    
 }
+
 
 
 
@@ -99,6 +110,7 @@ static NSString * resueId = @"cell";
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
     self.navigationController.navigationBarHidden = NO;
     self.tabBarController.tabBar.hidden = NO;
+    [self.tableView fl_clearCache];
     NSLog(@"hello gitKong");
 }
 

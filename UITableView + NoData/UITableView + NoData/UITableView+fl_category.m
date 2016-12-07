@@ -19,40 +19,73 @@
 @end
 
 @implementation UITableView (fl_category)
-
+/**
+ *  @author gitKong
+ *
+ *  沙盒路径
+ */
 static NSString *cache;
+/**
+ *  @author gitKong
+ *
+ *  内存缓存
+ */
+static NSCache *memory_cache;
 
+static BOOL autoCache;
+/**
+ *  @author gitKong
+ *
+ *  load是只要类所在文件被引用就会被调用，而initialize是在类或者其子类的第一个方法被调用前调用。所以如果类没有被引用进项目，就不会有load调用；但即使类文件被引用进来，但是没有使用，那么initialize也不会被调用。
+ */
 + (void)load{
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        memory_cache = [[NSCache alloc] init];
+        // 最大成本数，超过会自动清空
+        memory_cache.totalCostLimit = 10;
+        
+        autoCache = YES;
+        
+        // 缓存文件路径
+        [self fl_dishCachePath];
+        
+        // 收到内存警告，要清空缓存
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(fl_clearMemoryCache) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
+        
+        
         // 交换方法
-        cache = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject] stringByAppendingPathComponent:@"fl_cache"];
-        BOOL isDir = NO;
-        BOOL isExists = [[NSFileManager defaultManager] fileExistsAtPath:cache isDirectory:&isDir];
-        if (!isExists || !isDir) {
-            [[NSFileManager defaultManager] createDirectoryAtPath:cache withIntermediateDirectories:YES attributes:nil error:nil];
-        }
-        // 交换方法
-        [self methodSwizzlingWithOriginalSelector:@selector(reloadData) bySwizzledSelector:@selector(fl_reloadData)];
+        [self fl_methodSwizzlingWithOriginalSelector:@selector(reloadData) bySwizzledSelector:@selector(fl_reloadData)];
+        
     });
 }
 
+- (void)dealloc{
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
+}
 
-+ (void)methodSwizzlingWithOriginalSelector:(SEL)originalSelector bySwizzledSelector:(SEL)swizzledSelector{
++ (void)fl_dishCachePath{
+    cache = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject] stringByAppendingPathComponent:@"fl_cache"];
+    BOOL isDir = NO;
+    BOOL isExists = [[NSFileManager defaultManager] fileExistsAtPath:cache isDirectory:&isDir];
+    if (!isExists || !isDir) {
+        [[NSFileManager defaultManager] createDirectoryAtPath:cache withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+}
+
++ (void)fl_methodSwizzlingWithOriginalSelector:(SEL)originalSelector bySwizzledSelector:(SEL)swizzledSelector{
     Class class = [self class];
-    //原有方法
     Method originalMethod = class_getInstanceMethod(class, originalSelector);
-    //替换原有方法的新方法
     Method swizzledMethod = class_getInstanceMethod(class, swizzledSelector);
-    //先尝试給源SEL添加IMP，这里是为了避免源SEL没有实现IMP的情况
     BOOL didAddMethod = class_addMethod(class,originalSelector,
                                         method_getImplementation(swizzledMethod),
                                         method_getTypeEncoding(swizzledMethod));
-    if (didAddMethod) {//添加成功：说明源SEL没有实现IMP，将源SEL的IMP替换到交换SEL的IMP
+    if (didAddMethod) {
         class_replaceMethod(class,swizzledSelector,
                             method_getImplementation(originalMethod),
                             method_getTypeEncoding(originalMethod));
-    } else {//添加失败：说明源SEL已经有IMP，直接将两个SEL的IMP交换即可
+    }
+    else {
         method_exchangeImplementations(originalMethod, swizzledMethod);
     }
 }
@@ -61,9 +94,10 @@ static char *static_no_data_key = "static_no_data_key";
 static char *static_no_network_key = "static_no_network_key";
 static char *static_ImageView_key = "static_ImageView_key";
 static char *static_ImageView_operation_key = "static_ImageView_operation_key";
+static char *static_autoCache_key = "static_autoCache_key";
 
 - (void)setFl_noData_image:(NSString *)fl_noData_image{
-    NSAssert(fl_noData_image, @"noData_image 不能为空");
+    NSAssert(fl_noData_image, @"fl_noData_image 不能为空");
     objc_setAssociatedObject(self, &static_no_data_key, fl_noData_image, OBJC_ASSOCIATION_COPY_NONATOMIC);
     
 }
@@ -73,6 +107,7 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
 }
 
 - (void)setFl_noNetwork_image:(NSString *)fl_noNetwork_image{
+    NSAssert(fl_noNetwork_image, @"fl_noNetwork_image 不能为空");
     objc_setAssociatedObject(self, &static_no_network_key, fl_noNetwork_image, OBJC_ASSOCIATION_COPY_NONATOMIC);
     
 }
@@ -113,6 +148,16 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
     return objc_getAssociatedObject(self, &static_ImageView_operation_key);
 }
 
+- (void)setFl_autoCache:(BOOL)fl_autoCache{
+    objc_setAssociatedObject(self, &static_autoCache_key, @(fl_autoCache), OBJC_ASSOCIATION_ASSIGN);
+    autoCache = fl_autoCache;
+}
+
+- (BOOL)fl_autoCache{
+//    NSNumber *autoCacheNum = objc_getAssociatedObject(self, &static_autoCache_key);
+//    return autoCacheNum.boolValue;
+    return autoCache;
+}
 
 - (void)clickToOperate{
     if (self.clickOperation) {
@@ -149,36 +194,59 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
     
     // 更新imageView 的frame
     [self updataImageViewFrame];
-    // 判断沙盒,先把名字/去掉，防止创建多个文件夹
-    NSString *imageName = [image stringByReplacingOccurrencesOfString:@"/" withString:@""];
-    NSString *path = [cache stringByAppendingPathComponent:imageName];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (data) {
-        self.imageView.image = [self getImageWithData:data];
-    }
     
+    // 判断内存中是否存在
+    UIImage *memory_cache_image = [memory_cache objectForKey:image];
+    if (memory_cache_image) {
+        self.imageView.image = memory_cache_image;
+    }
     else{
-        NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:image]];
-        __weak typeof(self) weakSelf = self;
-        
-        if (data) {// 网络url
-            dispatch_async(dispatch_get_global_queue(0, 0), ^{
-                UIImage *networkImg = [self getImageWithData:data];
-                // 缓存在沙盒中
-                [data writeToFile:path atomically:YES];
-                
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    weakSelf.imageView.image = networkImg;
-                });
-            });
-            
-        }
-        else{// 项目中文件
-            if ([image rangeOfString:@".gif"].location != NSNotFound) {
-                self.imageView.image = [self gifImageNamed:image];
+        // 判断沙盒,先把名字/去掉，防止创建多个文件夹
+        NSString *imageName = [image stringByReplacingOccurrencesOfString:@"/" withString:@""];
+        NSString *path = [cache stringByAppendingPathComponent:imageName];
+        NSData *data = [NSData dataWithContentsOfFile:path];
+        if (data) {
+            UIImage *dish_cache_image = [self getImageWithData:data];
+            self.imageView.image = dish_cache_image;
+            if (self.fl_autoCache) {
+                // 缓存到内存中
+                [memory_cache setObject:dish_cache_image forKey:image];
             }
-            else{
-                self.imageView.image = [UIImage imageNamed:image];
+        }
+        
+        else{
+            NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:image]];
+            __weak typeof(self) weakSelf = self;
+            
+            if (data) {// 网络url
+                dispatch_async(dispatch_get_global_queue(0, 0), ^{
+                    UIImage *networkImg = [self getImageWithData:data];
+                    
+                    if (weakSelf.fl_autoCache) {
+                        // 缓存到内存中
+                        [memory_cache setObject:networkImg forKey:image];
+                        // 缓存在沙盒中
+                        [data writeToFile:path atomically:YES];
+                    }
+                    
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        weakSelf.imageView.image = networkImg;
+                    });
+                });
+                
+            }
+            else{// 项目中文件
+                if ([image rangeOfString:@".gif"].location != NSNotFound) {
+                    UIImage *local_gif_image = [self gifImageNamed:image];
+                    self.imageView.image = local_gif_image;
+                    if (weakSelf.fl_autoCache) {
+                        // 缓存到内存中
+                        [memory_cache setObject:local_gif_image forKey:image];
+                    }
+                }
+                else{
+                    self.imageView.image = [UIImage imageNamed:image];
+                }
             }
         }
     }
@@ -242,7 +310,6 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
     int netType = 0;
     //获取到网络返回码
     for (id child in children) {
-        //        NSLog(@"child = %@",NSStringFromClass([child class]));
         if ([child isKindOfClass:NSClassFromString(@"UIStatusBarDataNetworkItemView")]) {
             //获取到状态栏,飞行模式和关闭移动网络都拿不到dataNetworkType；1 - 2G; 2 - 3G; 3 - 4G; 5 - WIFI
             netType = [[child valueForKeyPath:@"dataNetworkType"] intValue];
@@ -259,7 +326,6 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
             }
         }
     }
-    //    self.imageView.hidden = flag;
     return flag;
 }
 
@@ -272,22 +338,21 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
         sections = [self.dataSource numberOfSectionsInTableView:self];
     }
     for (NSInteger section = 0; section < sections; section++) {
-        row = [self.dataSource tableView:self numberOfRowsInSection:section];
-        if (row) {
-            // 只要有值都不是空
-            isEmpty = NO;
-        }
-        else{
-            isEmpty = YES;
+        if ([self.dataSource respondsToSelector:@selector(tableView:numberOfRowsInSection:)]) {
+            row = [self.dataSource tableView:self numberOfRowsInSection:section];
+            if (row) {
+                // 只要有值都不是空
+                isEmpty = NO;
+            }
+            else{
+                isEmpty = YES;
+            }
         }
     }
-    
-    //    self.imageView.hidden = !isEmpty;
     return isEmpty;
 }
 
 - (void)fl_reloadData{
-    
     // 判断网络状态
     if(![self checkNoNetwork]){
         [self setImage:self.fl_noNetwork_image];
@@ -310,8 +375,32 @@ static char *static_ImageView_operation_key = "static_ImageView_operation_key";
     [self fl_reloadData];
 }
 
+
+- (void)fl_clearCache{
+    [self fl_clearMemoryCache];
+    [self fl_clearDiskCache];
+}
+
+- (void)fl_clearMemoryCache{
+    // 清空缓存
+    [memory_cache removeAllObjects];
+}
+
+- (void)fl_clearDiskCache {
+    // 清空沙盒
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSArray *contents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cache error:NULL];
+        
+        for (NSString *fileName in contents) {
+            [[NSFileManager defaultManager] removeItemAtPath:[cache stringByAppendingPathComponent:fileName] error:nil];
+        }
+    });
+}
+
 - (void)fl_imageViewClickOperation:(void(^)())clickOperation{
-    self.clickOperation = clickOperation;
+    if (clickOperation) {
+        self.clickOperation = clickOperation;
+    }
 }
 
 /**

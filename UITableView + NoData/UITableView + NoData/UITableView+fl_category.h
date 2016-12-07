@@ -15,7 +15,13 @@
 /**
  *  @author gitKong
  *
- *  没有数据显示的图片
+ *  是否开启自动缓存，此时会缓存到沙盒 和 内存中，默认开启
+ */
+@property (nonatomic,assign)BOOL fl_autoCache;
+/**
+ *  @author gitKong
+ *
+ *  没有数据显示的图片,不能为nil
  *
  *  可传入 本地图片名 或者 网络URL （包括gif）如果是网络URL，内部自动缓存
  */
@@ -23,7 +29,7 @@
 /**
  *  @author gitKong
  *
- *  没有网络显示的图片
+ *  没有网络显示的图片,不能为nil
  *
  *  可传入 本地图片名 或者 网络URL （包括gif）如果是网络URL，内部自动缓存
  */
@@ -34,5 +40,11 @@
  *  没有网络或者没有数据显示界面的点击事件
  */
 - (void)fl_imageViewClickOperation:(void(^)())clickOperation;
+/**
+ *  @author gitKong
+ *
+ *  清空缓存(包括沙盒和内存)
+ */
+- (void)fl_clearCache;
 
 @end

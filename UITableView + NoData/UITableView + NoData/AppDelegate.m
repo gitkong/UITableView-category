@@ -14,6 +14,14 @@
 
 @implementation AppDelegate
 
+-(void)application:(UIApplication *)application didReceiveLocalNotification:(UILocalNotification *)notification{
+    
+    if (notification) {
+        NSDictionary *userInfo =  notification.userInfo;
+        NSString *obj = [userInfo objectForKey:@"key"];
+        NSLog(@"%@",obj);
+    }
+}
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     // Override point for customization after application launch.
