@@ -166,7 +166,7 @@ static char *static_autoCache_key = "static_autoCache_key";
 }
 
 - (void)updataImageViewFrame{
-    // 如果没有导航控制器，那么rect的y值为0，如果有导航控制器，那么y为-64,如果导航控制器hidden那么也会跟着变，不需要额外修改
+    // 如果没有导航控制器，那么rect的y = 0，如果有导航控制器，而且UINavigationBar是显示,那么y = -64，如果有导航控制器，但UINavigationBar隐藏,那么y = -20
     Class conecreteValue = NSClassFromString(@"NSConcreteValue");
     id concreteV = [[conecreteValue alloc] init];
     concreteV = [self valueForKey:@"visibleBounds"];
